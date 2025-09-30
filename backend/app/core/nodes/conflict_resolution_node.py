@@ -12,8 +12,7 @@ from langchain.schema import HumanMessage, SystemMessage
 from datetime import datetime
 import json
 
-from ..graph_state import AmendmentWorkflowState, ConflictInfo, AmendmentStatus
-from ..tools.contract_tools import get_contract_tools
+from ..graph_state import AmendmentWorkflowState, ConflictInfo
 
 
 class ConflictResolutionNode:
@@ -23,7 +22,7 @@ class ConflictResolutionNode:
     
     def __init__(self):
         self.llm = ChatOpenAI(model="gpt-4-turbo-preview", temperature=0.4)  # Slightly higher temp for creativity
-        self.tools = get_contract_tools()
+        # self.tools = get_contract_tools()
         self.mediation_strategies = [
             "compromise_based",
             "value_maximization", 
@@ -66,16 +65,15 @@ class ConflictResolutionNode:
                         state.resolve_conflict(conflict_id, resolution.get("resolution_notes", ""))
             
             # Update workflow status based on resolution results
-            if len(state.active_conflicts) == 0:
-                state.update_status(AmendmentStatus.CONSENSUS_BUILDING, "All conflicts resolved")
-                next_action = "build_consensus"
-            else:
-                next_action = "escalate_conflicts"
-            
+            # if len(state.active_conflicts) == 0:
+            #     state.update_status(AmendmentStatus.CONSENSUS_BUILDING, "All conflicts resolved")
+            #     next_action = "build_consensus"
+            # else:
+            #     next_action = "escalate_conflicts"
+
             # Log execution
             duration = (datetime.utcnow() - start_time).total_seconds()
             result = {
-                "action": next_action,
                 "conflicts_processed": len(resolution_results),
                 "conflicts_resolved": sum(1 for r in resolution_results if r.get("status") == "resolved"),
                 "remaining_conflicts": len(state.active_conflicts),

@@ -11,12 +11,13 @@ from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
 from langchain_openai import ChatOpenAI
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from .graph_state import AmendmentWorkflowState, AmendmentStatus
-from .nodes.coordinator_node import CoordinatorNode
 from .nodes.party_node import PartyAgentNode
-
+from langchain_core.messages import SystemMessage, HumanMessage
+import json
+from .nodes.conflict_resolution_node import ConflictResolutionNode
 
 class ContractAmendmentOrchestrator:
     """
@@ -50,6 +51,18 @@ class ContractAmendmentOrchestrator:
 
         # Set entry point
         workflow.set_entry_point("coordinator")
+        
+        # Add edges from coordinator
+        workflow.add_edge("coordinator", "party_notified")
+        workflow.add_edge("party_notified", "party_review")
+        workflow.add_edge("party_review", "conflict_resolution")
+        workflow.add_edge("conflict_resolution", "consensus_building")
+        workflow.add_edge("consensus_building", "legal_review")
+        workflow.add_edge("legal_review", "version_control")
+        workflow.add_edge("version_control", "final_approval")
+        workflow.add_edge("final_approval", "completion")
+        workflow.add_edge("completion", END)
+        workflow.add_edge("error_handler", END)
         
         # Add conditional edges from coordinator
         workflow.add_conditional_edges(
@@ -265,15 +278,123 @@ class ContractAmendmentOrchestrator:
 
     async def _coordinator_node(self, state: AmendmentWorkflowState) -> AmendmentWorkflowState:
         """Coordinator node implementation"""
-        coordinator = CoordinatorNode()
-        result = await coordinator(state)
+
+        """Handle workflow initiation"""
+        print("📋 Handling workflow initiation...")
         
-        # Update state based on coordinator output
-        if "next_action" in result:
-            state.next_steps = [result["next_action"]]
+        # Validate that we have all required information
+        if not state.parties:
+            return {"error": "No parties specified for amendment"}
+        
+        if not state.proposed_changes:
+            return {"error": "No proposed changes specified"}
+        
+        # Analyze the original contract if provided
+        if state.original_contract:
+            analysis_result = await self._analyze_contract_context(state)
+            state.node_outputs["contract_analysis"] = analysis_result
+        
+        # Estimate workflow complexity and timeline
+        complexity_score = await self._assess_workflow_complexity(state)
+        estimated_duration = self._calculate_estimated_duration(complexity_score, len(state.parties))
+        
+        state.metrics.estimated_completion = datetime.utcnow() + timedelta(minutes=estimated_duration)  # noqa: F821
+        
+        # Set up party notification requirements
+        state.required_approvals = state.parties.copy()
+        
+        # Update status and determine next step
+        state.update_status(AmendmentStatus.PARTIES_NOTIFIED, "Workflow initiated, moving to party notification")
         
         return state
 
+    def _calculate_estimated_duration(self, complexity: float, party_count: int) -> int:
+        """Calculate estimated duration in minutes"""
+        base_duration = 120  # 2 hours base
+        complexity_factor = complexity * 480  # Up to 8 hours for max complexity
+        party_factor = (party_count - 2) * 60  # 1 hour per additional party beyond 2
+        
+        return int(base_duration + complexity_factor + party_factor)
+    
+    async def _analyze_contract_context(self, state: AmendmentWorkflowState) -> Dict[str, Any]:
+        """Analyze the original contract to understand context"""
+        analysis_prompt = f"""
+        Analyze this contract to understand the context for proposed amendments:
+        
+        Original Contract:
+        {state.original_contract[:2000]}...
+        
+        Proposed Changes:
+        {json.dumps(state.proposed_changes, indent=2)}
+        
+        Parties Involved:
+        {state.parties}
+        
+        Provide analysis in JSON format:
+        {{
+            "contract_type": "type of contract",
+            "complexity_indicators": ["factors that make this complex"],
+            "amendment_areas": ["areas being modified"],
+            "potential_risks": ["risks to watch for"],
+            "stakeholder_impact": {{
+                "party": "impact description"
+            }},
+            "recommended_review_time": "estimated time needed"
+        }}
+        """
+        
+        messages = [
+            SystemMessage(content="You are an expert contract analyst."),
+            HumanMessage(content=analysis_prompt)
+        ]
+        
+        response = await self.llm.ainvoke(messages)
+        
+        try:
+            return json.loads(response.content)
+        except json.JSONDecodeError:
+            return {"raw_analysis": response.content}
+    
+    async def _assess_workflow_complexity(self, state: AmendmentWorkflowState) -> float:
+        """Assess the complexity of the amendment workflow"""
+        complexity_factors = {
+            "party_count": len(state.parties) * 0.2,
+            "change_count": len(state.proposed_changes) * 0.15,
+            "contract_length": len(state.original_contract or "") / 10000 * 0.1,
+            "regulatory_complexity": 0.3 if state.workflow_config.get("require_legal_review") else 0.1
+        }
+        
+        base_complexity = sum(complexity_factors.values())
+        
+        # Analyze proposed changes for complexity
+        if state.proposed_changes:
+            complexity_prompt = f"""
+            Rate the complexity of these contract amendments on a scale of 1-10:
+            {json.dumps(state.proposed_changes, indent=2)}
+            
+            Consider:
+            - Legal complexity
+            - Business impact
+            - Implementation difficulty
+            - Risk level
+            
+            Return only a number from 1-10.
+            """
+            
+            messages = [
+                SystemMessage(content="You are an expert contract analyst."),
+                HumanMessage(content=complexity_prompt)
+            ]
+            
+            try:
+                response = await self.llm.ainvoke(messages)
+                llm_complexity = float(response.content.strip()) / 10
+                base_complexity += llm_complexity * 0.3
+            except Exception as e:
+                print(f"Error analyzing complexity: {e}")
+                base_complexity += 0.5  # Default moderate complexity
+        
+        return min(base_complexity, 1.0)  # Cap at 1.0
     # async def _wait_node(self, state: AmendmentWorkflowState) -> AmendmentWorkflowState:
     #     pending = state.get_pending_parties() if hasattr(state, "get_pending_parties") else []
     #     print(f"⏸️ WAIT: Pending party responses: {pending if pending else 'unknown'}")
@@ -330,42 +451,15 @@ class ContractAmendmentOrchestrator:
         print(f"⚡ CONFLICT RESOLUTION: Resolving {len(state.active_conflicts)} conflicts")
         
         # In a full implementation, this would use sophisticated AI mediation
-        conflict_resolution_prompt = f"""
-        You are an AI mediator resolving contract amendment conflicts.
-        
-        Active Conflicts:
-        {[c.description for c in state.conflicts if c.resolution_status == 'unresolved']}
-        
-        Party Positions:
-        {[(p.organization, p.status, p.comments) for p in state.party_responses.values()]}
-        
-        Based on the conflicts and party positions, generate a new set of proposed changes as a JSON object that merges the positions and resolves the conflicts. The JSON output should be in the same format as the original 'proposed_changes'.
-        
-        Return ONLY the JSON object of the new proposed changes.
-        Example format: {{"clause_1.1": "New text for clause 1.1..."}}
-        """
-        
-        # Use LLM to generate resolution suggestions
-        from langchain.schema import HumanMessage, SystemMessage
-        import json
-
-        messages = [
-            SystemMessage(content="You are an expert contract mediator specializing in multi-party negotiations. Your task is to generate a revised set of contract changes to build consensus."),
-            HumanMessage(content=conflict_resolution_prompt)
-        ]
-        
-        response = await self.llm.ainvoke(messages)
-        
-        try:
-            # The LLM should return a JSON string of the new proposed changes
-            new_changes = json.loads(response.content)
-            # Store the new changes in a temporary field in the state
-            state.node_outputs["consensus_proposal"] = new_changes
-            print(f"   AI Mediator proposed new changes: {new_changes}")
-        except json.JSONDecodeError:
-            print("   Error: AI mediator did not return valid JSON for new changes.")
-            state.errors.append({"node": "conflict_resolution", "error": "Failed to parse new changes from LLM."})
-
+        conflict_resolution_node = ConflictResolutionNode()
+        result = await conflict_resolution_node(state)
+        # result = {
+        #         "conflicts_processed": len(resolution_results),
+        #         "conflicts_resolved": sum(1 for r in resolution_results if r.get("status") == "resolved"),
+        #         "remaining_conflicts": len(state.active_conflicts),
+        #         "resolution_details": resolution_results
+        #     }
+        print(result)
         state.update_status(AmendmentStatus.CONSENSUS_BUILDING)
         
         return state
@@ -521,83 +615,83 @@ class ContractAmendmentOrchestrator:
         return state
     
     # Routing conditions
-    def _route_from_coordinator(self, state: AmendmentWorkflowState) -> str:
-        """Route from coordinator based on state"""
+    # def _route_from_coordinator(self, state: AmendmentWorkflowState) -> str:
+    #     """Route from coordinator based on state"""
 
-        if state.status == AmendmentStatus.PARTIES_NOTIFIED:
-            return "party_notified"
-        elif state.status == AmendmentStatus.UNDER_REVIEW:
-            return "party_review"
-        elif state.status == AmendmentStatus.CONFLICTS_DETECTED:
-            return "conflict_resolution"
-        elif state.status == AmendmentStatus.LEGAL_REVIEW:
-            return "legal_review"
-        elif state.status == AmendmentStatus.CONSENSUS_BUILDING:
-            return "version_control"
-        elif state.status == AmendmentStatus.FINAL_APPROVAL:
-            return "final_approval"
-        elif state.status in [AmendmentStatus.APPROVED, AmendmentStatus.COMPLETED]:
-            return "completion"
-        elif state.errors:
-            return "error"
-        else:
-            return "party_review"
+    #     if state.status == AmendmentStatus.PARTIES_NOTIFIED:
+    #         return "party_notified"
+    #     elif state.status == AmendmentStatus.UNDER_REVIEW:
+    #         return "party_review"
+    #     elif state.status == AmendmentStatus.CONFLICTS_DETECTED:
+    #         return "conflict_resolution"
+    #     elif state.status == AmendmentStatus.LEGAL_REVIEW:
+    #         return "legal_review"
+    #     elif state.status == AmendmentStatus.CONSENSUS_BUILDING:
+    #         return "version_control"
+    #     elif state.status == AmendmentStatus.FINAL_APPROVAL:
+    #         return "final_approval"
+    #     elif state.status in [AmendmentStatus.APPROVED, AmendmentStatus.COMPLETED]:
+    #         return "completion"
+    #     elif state.errors:
+    #         return "error"
+    #     else:
+    #         return "party_review"
 
-    def _route_from_party_notified(self, state: AmendmentWorkflowState) -> str:
-        """Route from party notified based on responses"""
-        if state.status == AmendmentStatus.UNDER_REVIEW:
-            return "party_review"
-        elif state.errors:
-            return "error"
-        else:
-            return "coordinator"
+    # def _route_from_party_notified(self, state: AmendmentWorkflowState) -> str:
+    #     """Route from party notified based on responses"""
+    #     if state.status == AmendmentStatus.UNDER_REVIEW:
+    #         return "party_review"
+    #     elif state.errors:
+    #         return "error"
+    #     else:
+    #         return "coordinator"
 
-    def _route_from_party_review(self, state: AmendmentWorkflowState) -> str:
-        """Route from party review based on responses"""
-        pending_parties = state.get_pending_parties()
+    # def _route_from_party_review(self, state: AmendmentWorkflowState) -> str:
+    #     """Route from party review based on responses"""
+    #     pending_parties = state.get_pending_parties()
 
-        if state.has_active_conflicts():
-            return "conflict_resolution"
-        elif state.is_consensus_reached():
-            return "version_control"
-        elif pending_parties:
-            return END
-        elif state.errors:
-            return "error"
-        else:
-            return "coordinator"
+    #     if state.has_active_conflicts():
+    #         return "conflict_resolution"
+    #     elif state.is_consensus_reached():
+    #         return "version_control"
+    #     elif pending_parties:
+    #         return END
+    #     elif state.errors:
+    #         return "error"
+    #     else:
+    #         return "coordinator"
 
-    def _route_from_conflict_resolution(self, state: AmendmentWorkflowState) -> str:
-        """Route from conflict resolution"""
-        if state.errors:
-            return "error"
-        if state.status == AmendmentStatus.CONSENSUS_BUILDING:
-            return "consensus_building"
-        else:
-            # This case should ideally not be hit if the node works correctly
-            return "coordinator"
+    # def _route_from_conflict_resolution(self, state: AmendmentWorkflowState) -> str:
+    #     """Route from conflict resolution"""
+    #     if state.errors:
+    #         return "error"
+    #     if state.status == AmendmentStatus.CONSENSUS_BUILDING:
+    #         return "consensus_building"
+    #     else:
+    #         # This case should ideally not be hit if the node works correctly
+    #         return "coordinator"
     
-    def _route_from_legal_review(self, state: AmendmentWorkflowState) -> str:
-        """Route from legal review"""
+    # def _route_from_legal_review(self, state: AmendmentWorkflowState) -> str:
+    #     """Route from legal review"""
         
-        if state.legal_review_status == "approved":
-            return "version_control"
-        elif state.legal_review_status == "requires_changes":
-            return "conflict_resolution"
-        elif state.errors:
-            return "error"
-        else:
-            return "coordinator"
+    #     if state.legal_review_status == "approved":
+    #         return "version_control"
+    #     elif state.legal_review_status == "requires_changes":
+    #         return "conflict_resolution"
+    #     elif state.errors:
+    #         return "error"
+    #     else:
+    #         return "coordinator"
     
-    def _route_from_version_control(self, state: AmendmentWorkflowState) -> str:
-        """Route from version control"""
+    # def _route_from_version_control(self, state: AmendmentWorkflowState) -> str:
+    #     """Route from version control"""
         
-        if state.final_document and state.is_consensus_reached():
-            return "final_approval"
-        elif state.errors:
-            return "error"
-        else:
-            return "coordinator"
+    #     if state.final_document and state.is_consensus_reached():
+    #         return "final_approval"
+    #     elif state.errors:
+    #         return "error"
+    #     else:
+    #         return "coordinator"
 
 
 # Global orchestrator instance
