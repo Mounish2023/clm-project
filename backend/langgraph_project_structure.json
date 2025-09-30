@@ -1,0 +1,96 @@
+{
+    "backend/": {
+      "core/": {
+        "graph_state.py": "LangGraph state definitions",
+        "orchestrator.py": "Main LangGraph orchestration engine",
+        "nodes/": {
+          "__init__.py": "",
+          "coordinator_node.py": "Coordinator agent node",
+          "party_node.py": "Party representative nodes",
+          "legal_node.py": "Legal compliance node",
+          "conflict_resolution_node.py": "Conflict resolution node",
+          "version_control_node.py": "Document version control node"
+        },
+        "tools/": {
+          "__init__.py": "",
+          "contract_tools.py": "Contract analysis tools",
+          "legal_tools.py": "Legal compliance tools",
+          "communication_tools.py": "Inter-agent communication tools",
+          "document_tools.py": "Document processing tools"
+        },
+        "conditions/": {
+          "__init__.py": "",
+          "routing_conditions.py": "Graph routing logic",
+          "approval_conditions.py": "Approval workflow conditions"
+        }
+      },
+      "agents/": {
+        "__init__.py": "",
+        "base_agent.py": "Base agent class with LangGraph integration",
+        "agent_factory.py": "Factory for creating specialized agents"
+      },
+      "services/": {
+        "__init__.py": "",
+        "document_processor.py": "Document parsing and analysis",
+        "version_control.py": "Advanced version control system",
+        "notification_service.py": "Real-time notifications",
+        "integration_service.py": "External system integrations"
+      },
+      "api/": {
+        "__init__.py": "",
+        "main.py": "FastAPI application with LangGraph integration",
+        "routes/": {
+          "__init__.py": "",
+          "amendments.py": "Amendment workflow endpoints",
+          "contracts.py": "Contract management endpoints",
+          "workflow.py": "Workflow monitoring endpoints"
+        },
+        "websockets/": {
+          "__init__.py": "",
+          "workflow_ws.py": "Real-time workflow updates"
+        }
+      },
+      "db/": {
+        "__init__.py": "",
+        "models.py": "Database models with workflow state",
+        "database.py": "Database configuration",
+        "repositories.py": "Data access layer"
+      },
+      "utils/": {
+        "__init__.py": "",
+        "config.py": "Configuration management",
+        "logging.py": "Logging setup",
+        "exceptions.py": "Custom exceptions"
+      }
+    },
+    "frontend/": {
+      "src/": {
+        "components/": {
+          "WorkflowVisualization.tsx": "LangGraph workflow visualization",
+          "AmendmentDashboard.tsx": "Real-time amendment tracking",
+          "ConflictResolution.tsx": "Conflict resolution interface"
+        },
+        "services/": {
+          "api.ts": "API client for backend communication",
+          "websocket.ts": "WebSocket client for real-time updates"
+        }
+      }
+    },
+    "tests/": {
+      "unit/": {
+        "test_nodes.py": "Individual node testing",
+        "test_tools.py": "Tool testing",
+        "test_conditions.py": "Routing condition testing"
+      },
+      "integration/": {
+        "test_workflows.py": "End-to-end workflow testing",
+        "test_multi_party.py": "Multi-party scenario testing"
+      }
+    },
+    "config/": {
+      "requirements.txt": "Python dependencies",
+      "docker-compose.yml": "Container orchestration",
+      "Dockerfile": "Application container",
+      ".env.example": "Environment variables template"
+    }
+  }

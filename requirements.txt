@@ -1,0 +1,17 @@
+langchain 
+langgraph 
+langchain_openai
+fastapi[all]
+uvicorn 
+sqlalchemy 
+psycopg2-binary 
+redis 
+weaviate-client 
+neo4j 
+openai 
+anthropic 
+pydantic 
+python-multipart 
+python-jose[cryptography] 
+passlib[bcrypt]
+scalar-fastapi
