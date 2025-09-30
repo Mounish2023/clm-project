@@ -12,7 +12,7 @@ from langchain.schema import HumanMessage, SystemMessage
 from datetime import datetime
 import json
 
-from ..graph_state import AmendmentWorkflowState, PartyResponse, ConflictInfo
+from ..graph_state import AmendmentWorkflowState, PartyResponse
 from ..tools.contract_tools import get_contract_tools
 
 
@@ -65,8 +65,6 @@ class PartyAgentNode:
             # Add response to state
             state.add_party_response(self.party_id, party_response)
 
-            # Identify and add conflicts based on the evaluation
-            await self._identify_and_add_conflicts(state, evaluation_result)
             
             # Log execution
             duration = (datetime.utcnow() - start_time).total_seconds()
@@ -455,53 +453,6 @@ class PartyAgentNode:
         
         return base_constraints
 
-    async def _identify_and_add_conflicts(self, state: AmendmentWorkflowState, evaluation_result: Dict[str, Any]) -> None:
-        """
-        Identifies conflicts based on evaluation and adds them to the state.
-        """
-        recommendation = evaluation_result.get("recommendation")
-
-        if recommendation in ["rejected", "requested_changes"]:
-            # Extract details from the evaluation to create a conflict
-            analysis_details = evaluation_result.get("analysis_details", {})
-            contract_analysis = analysis_details.get("contract_analysis", {})
-            unfavorable_changes = contract_analysis.get("unfavorable_changes", [])
-            
-            # Determine affected clauses
-            affected_clauses = []
-            if unfavorable_changes:
-                for change in unfavorable_changes:
-                    if isinstance(change, dict) and "clause" in change:
-                        affected_clauses.append(change["clause"])
-                    elif isinstance(change, str):
-                        affected_clauses.append(change)
-
-            # Create a conflict description
-            description = evaluation_result.get("comments", "No specific comments provided.")
-            if recommendation == "requested_changes":
-                description = f"Requested changes: {description}"
-            else:
-                description = f"Rejected due to: {description}"
-
-            # Determine severity
-            risk_assessment = evaluation_result.get("risk_assessment", {})
-            overall_risk = risk_assessment.get("overall_risk_level", "medium")
-            severity_map = {"high": "high", "medium": "medium", "low": "low"}
-            severity = severity_map.get(overall_risk, "medium")
-
-            conflict = ConflictInfo(
-                conflict_type="unacceptable_terms" if recommendation == "rejected" else "counter_proposal",
-                description=description,
-                affected_parties=[self.party_id],
-                affected_clauses=affected_clauses or ["general"],
-                severity=severity,
-                resolution_suggestions=["Review counter-proposals" if recommendation == "requested_changes" else "Re-evaluate proposal based on rejection feedback"]
-            )
-
-            state.add_conflict(conflict)
-            print(f"   CONFLICT DETECTED: {self.organization} {recommendation} the proposal. Added conflict {conflict.conflict_id}")
-
-            # state.update_status(AmendmentStatus.CONFLICTS_DETECTED, "Conflicts detected in party responses")
 
 
 

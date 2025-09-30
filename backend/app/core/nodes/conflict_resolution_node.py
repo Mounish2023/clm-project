@@ -6,12 +6,11 @@ This node handles the detection, analysis, and resolution of conflicts
 between different parties' proposed changes using AI mediation.
 """
 
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any
 from langchain_openai import ChatOpenAI
 from langchain.schema import HumanMessage, SystemMessage
 from datetime import datetime
 import json
-import uuid
 
 from ..graph_state import AmendmentWorkflowState, ConflictInfo, AmendmentStatus
 from ..tools.contract_tools import get_contract_tools
@@ -37,15 +36,20 @@ class ConflictResolutionNode:
         """
         Main conflict resolution logic
         """
-        print(f"⚡ CONFLICT RESOLUTION: Processing {len(state.active_conflicts)} active conflicts")
+        print(f"⚡ CONFLICT RESOLUTION: Processing amendment {state.amendment_id}")
         
         start_time = datetime.utcnow()
         
         try:
+            # First, identify any new conflicts from party responses
+            self._identify_conflicts(state)
+
             if not state.active_conflicts:
                 print("   No active conflicts to resolve")
                 return {"action": "no_conflicts", "message": "No active conflicts found"}
             
+            print(f"   Found {len(state.active_conflicts)} active conflicts to resolve.")
+
             # Categorize conflicts by type and severity
             conflict_analysis = await self._analyze_conflicts(state)
             
@@ -397,6 +401,52 @@ class ConflictResolutionNode:
             }
 
 
+    def _identify_conflicts(self, state: AmendmentWorkflowState) -> None:
+        """
+        Identifies new conflicts from party responses and adds them to the state.
+        """
+        # Get IDs of conflicts already processed to avoid duplication
+        existing_conflict_parties = set()
+        for conflict in state.conflicts:
+            existing_conflict_parties.update(conflict.affected_parties)
+
+        for party_id, response in state.party_responses.items():
+            if party_id in existing_conflict_parties:
+                continue # Skip parties that are already part of a conflict
+
+            if response.status in ["rejected", "requested_changes"]:
+                # Determine affected clauses from counter-proposals if they exist
+                affected_clauses = []
+                if response.proposed_changes and "proposed_modifications" in response.proposed_changes:
+                    for mod in response.proposed_changes["proposed_modifications"]:
+                        if "clause" in mod:
+                            affected_clauses.append(mod["clause"])
+
+                # Create a conflict description
+                description = response.comments or "No specific comments provided."
+                if response.status == "requested_changes":
+                    description = f"Requested changes: {description}"
+                else:
+                    description = f"Rejected due to: {description}"
+
+                # Determine severity from risk assessment if available
+                severity = "medium"
+                if response.risk_assessment and "overall_risk_level" in response.risk_assessment:
+                    risk_level = response.risk_assessment["overall_risk_level"]
+                    severity_map = {"high": "high", "medium": "medium", "low": "low"}
+                    severity = severity_map.get(risk_level, "medium")
+
+                conflict = ConflictInfo(
+                    conflict_type="unacceptable_terms" if response.status == "rejected" else "counter_proposal",
+                    description=description,
+                    affected_parties=[party_id],
+                    affected_clauses=affected_clauses or ["general"],
+                    severity=severity,
+                    resolution_suggestions=["Review counter-proposals" if response.status == "requested_changes" else "Re-evaluate proposal based on rejection feedback"]
+                )
+
+                state.add_conflict(conflict)
+                print(f"   CONFLICT DETECTED: {response.organization} {response.status} the proposal. Added conflict {conflict.conflict_id}")
 def create_conflict_resolution_node() -> ConflictResolutionNode:
     """Factory function to create conflict resolution node"""
     return ConflictResolutionNode()
