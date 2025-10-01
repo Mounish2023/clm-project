@@ -2,6 +2,48 @@
 
 This project is an AI-powered, multi-party contract amendment orchestration system designed to automate and streamline the process of negotiating and amending legal agreements. It leverages LangGraph and a multi-agent architecture to simulate the roles of different parties, enabling automated evaluation, conflict resolution, and consensus-building.
 
+```mermaid
+graph TD
+    subgraph Frontend
+        A[User Interface]
+    end
+
+    subgraph Backend
+        B[FastAPI Server]
+        C[WebSocket Manager]
+    end
+
+    subgraph AI Core
+        D[LangGraph Orchestrator]
+        E[Party Agent Nodes]
+        F[Conflict Resolver Node]
+        G[Legal Review Node]
+    end
+
+    subgraph Data Stores
+        H[PostgreSQL]
+        I[Redis]
+        J[Vector Database]
+    end
+
+    A -- HTTP/WebSocket --> B
+    B -- Initiates/Monitors --> D
+    B -- Real-time Updates --> C
+    C -- Pushes Updates --> A
+
+    D -- Manages State --> I
+    D -- Invokes Agents --> E
+    D -- Invokes Agents --> F
+    D -- Invokes Agents --> G
+
+    E -- LLM Calls --> K[OpenAI API]
+    F -- LLM Calls --> K
+    G -- LLM Calls --> K
+
+    B -- Persists Data --> H
+    E -- Accesses Data --> J
+```
+
 ## Table of Contents
 
 - [Problem Statement](#problem-statement)
@@ -81,47 +123,7 @@ The system is composed of a FastAPI backend that serves the API and a LangGraph-
     - **Redis**: Manages the real-time state of each active LangGraph workflow.
     - **Vector Stores (Weaviate/Neo4j)**: Can be used for semantic search over contract clauses or related legal documents (though current implementation details are abstract).
 
-```mermaid
-graph TD
-    subgraph Frontend
-        A[User Interface]
-    end
 
-    subgraph Backend
-        B[FastAPI Server]
-        C[WebSocket Manager]
-    end
-
-    subgraph AI Core
-        D[LangGraph Orchestrator]
-        E[Party Agent Nodes]
-        F[Conflict Resolver Node]
-        G[Legal Review Node]
-    end
-
-    subgraph Data Stores
-        H[PostgreSQL]
-        I[Redis]
-        J[Vector Database]
-    end
-
-    A -- HTTP/WebSocket --> B
-    B -- Initiates/Monitors --> D
-    B -- Real-time Updates --> C
-    C -- Pushes Updates --> A
-
-    D -- Manages State --> I
-    D -- Invokes Agents --> E
-    D -- Invokes Agents --> F
-    D -- Invokes Agents --> G
-
-    E -- LLM Calls --> K[OpenAI API]
-    F -- LLM Calls --> K
-    G -- LLM Calls --> K
-
-    B -- Persists Data --> H
-    E -- Accesses Data --> J
-```
 
 ## Deep Dives
 
