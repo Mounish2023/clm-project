@@ -63,13 +63,7 @@ class ConflictResolutionNode:
                     # If resolution successful, mark as resolved
                     if resolution.get("status") == "resolved":
                         state.resolve_conflict(conflict_id, resolution.get("resolution_notes", ""))
-            
-            # Update workflow status based on resolution results
-            # if len(state.active_conflicts) == 0:
-            #     state.update_status(AmendmentStatus.CONSENSUS_BUILDING, "All conflicts resolved")
-            #     next_action = "build_consensus"
-            # else:
-            #     next_action = "escalate_conflicts"
+        
 
             # Log execution
             duration = (datetime.utcnow() - start_time).total_seconds()

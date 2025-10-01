@@ -36,3 +36,47 @@ parties
 notification_logs
 api_audit_logs
 system_metrics
+
+
+Plan: Contract Amendment Workflow - Multi-party negotiation
+A party initiates the amendment to the Contract
+I have an AI that helps me understand the amendment and how it impacts me vis-a-vis the other parties \ the other party policies might not be available to me
+I understand the impact and now i initiate the amendment to the Contract
+The other parties are notified and they can review the amendment
+These other parties have their own AI Agent that analyzes the amendment and how it impacts them vis-a-vis the other parties
+The other parties can accept or reject the amendment. If rejecting counter proposals can be made.
+If the other parties accept the amendment, the amendment is accepted
+The amendment is merged with the original contract and a new version is created
+
+1. endpoint - self evaluation of the amendment
+2. endpoint - list of self evaluations of the amendment
+3. endpoint - initiate amendment
+4. endpoint - list of amendments
+5. endpoint - status of the amendment
+6. endpoint - resume workflow
+
+ endpoint - initiate amendment/ resume workflow
+ 1. contract analyzes
+ 2. parties notified
+ 3. party agents - review
+ 4. party agents - recommendation/ counter proposal
+ 5. party - human in the loop/ take action/ resume workflow with an updates
+ 6. party agents - analyze the updates
+ 7. party agents - recommendation
+ 8. final review
+ 9. final approval
+
+
+Entities:
+1. Contract
+2. Amendment
+3. Contract Version
+4. Workflow Event
+5. Party
+6. Notification Log
+
+
+postgresql db
+
+
+

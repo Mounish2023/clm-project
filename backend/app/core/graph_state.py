@@ -6,9 +6,9 @@ This module defines the comprehensive state structure that flows through
 the entire multi-party contract amendment workflow.
 """
 
-from typing import Dict, List, Optional, Any, Union
+from typing import Dict, List, Optional, Any
 from pydantic import BaseModel, Field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 import uuid
 
@@ -37,7 +37,7 @@ class PartyResponse(BaseModel):
     comments: Optional[str] = None
     proposed_changes: Optional[Dict[str, Any]] = None
     conditions: Optional[List[str]] = None
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=datetime.now(timezone.utc))
     risk_assessment: Optional[Dict[str, Any]] = None
 
 
@@ -51,7 +51,7 @@ class ConflictInfo(BaseModel):
     severity: str  # high, medium, low
     resolution_suggestions: Optional[List[str]] = None
     resolution_status: str = "unresolved"  # unresolved, in_progress, resolved
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=datetime.now(timezone.utc))
 
 
 class DocumentVersion(BaseModel):
@@ -62,18 +62,18 @@ class DocumentVersion(BaseModel):
     author: str
     changes_summary: str
     parent_version: Optional[str] = None
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=datetime.now(timezone.utc))
     document_metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
-class WorkflowMetrics(BaseModel):
-    """Workflow performance and progress metrics"""
-    start_time: datetime = Field(default_factory=datetime.utcnow)
-    current_duration: Optional[float] = None
-    estimated_completion: Optional[datetime] = None
-    progress_percentage: float = 0.0
-    bottlenecks: List[str] = Field(default_factory=list)
-    efficiency_score: Optional[float] = None
+# class WorkflowMetrics(BaseModel):
+#     """Workflow performance and progress metrics"""
+#     start_time: datetime = Field(default_factory=datetime.utcnow)
+#     current_duration: Optional[float] = None
+#     estimated_completion: Optional[datetime] = None
+#     progress_percentage: float = 0.0
+#     bottlenecks: List[str] = Field(default_factory=list)
+#     efficiency_score: Optional[float] = None
 
 
 class AmendmentWorkflowState(BaseModel):
@@ -91,7 +91,7 @@ class AmendmentWorkflowState(BaseModel):
     status: AmendmentStatus = AmendmentStatus.INITIATED
     current_step: str = "initiation"
     review_rounds: int = 0
-    next_steps: List[str] = Field(default_factory=list)
+    # next_steps: List[str] = Field(default_factory=list)
     
     # Parties and stakeholders
     parties: List[str] = Field(description="List of party IDs involved in amendment")
@@ -115,10 +115,10 @@ class AmendmentWorkflowState(BaseModel):
     current_version: Optional[str] = None
     merge_history: List[Dict[str, Any]] = Field(default_factory=list)
     
-    # Communication and notifications
-    messages: List[Dict[str, Any]] = Field(default_factory=list)
-    pending_notifications: List[Dict[str, Any]] = Field(default_factory=list)
-    communication_log: List[Dict[str, Any]] = Field(default_factory=list)
+    # # Communication and notifications
+    # messages: List[Dict[str, Any]] = Field(default_factory=list)
+    # pending_notifications: List[Dict[str, Any]] = Field(default_factory=list)
+    # communication_log: List[Dict[str, Any]] = Field(default_factory=list)
     
     # Legal and compliance
     compliance_checks: Dict[str, Any] = Field(default_factory=dict)
@@ -136,8 +136,8 @@ class AmendmentWorkflowState(BaseModel):
         description="History of node executions and state transitions"
     )
     
-    # Performance and analytics
-    metrics: WorkflowMetrics = Field(default_factory=WorkflowMetrics)
+    # # Performance and analytics
+    # metrics: WorkflowMetrics = Field(default_factory=WorkflowMetrics)
     
     # Error handling
     errors: List[Dict[str, Any]] = Field(default_factory=list)
@@ -241,32 +241,7 @@ class AmendmentWorkflowState(BaseModel):
     def has_active_conflicts(self) -> bool:
         """Check if there are any unresolved conflicts"""
         return len(self.active_conflicts) > 0
-    
-    def calculate_progress(self) -> float:
-        """Calculate overall workflow progress percentage"""
-        total_steps = 8  # Total workflow steps
-        completed_steps = 0
-        
-        if self.status in [AmendmentStatus.PARTIES_NOTIFIED, AmendmentStatus.UNDER_REVIEW]:
-            completed_steps = 1
-        elif self.status == AmendmentStatus.UNDER_REVIEW:
-            completed_steps = 2
-        elif self.status == AmendmentStatus.CONFLICTS_DETECTED:
-            completed_steps = 3
-        elif self.status == AmendmentStatus.CONFLICT_RESOLUTION:
-            completed_steps = 4
-        elif self.status == AmendmentStatus.CONSENSUS_BUILDING:
-            completed_steps = 5
-        elif self.status == AmendmentStatus.LEGAL_REVIEW:
-            completed_steps = 6
-        elif self.status == AmendmentStatus.FINAL_APPROVAL:
-            completed_steps = 7
-        elif self.status in [AmendmentStatus.APPROVED, AmendmentStatus.COMPLETED]:
-            completed_steps = 8
-            
-        progress = (completed_steps / total_steps) * 100
-        self.metrics.progress_percentage = progress
-        return progress
+
     
     def update_status(self, new_status: AmendmentStatus, notes: str = "") -> None:
         """Update workflow status and log the change"""
@@ -286,9 +261,7 @@ class AmendmentWorkflowState(BaseModel):
             self.node_outputs["status_changes"] = []
         self.node_outputs["status_changes"].append(status_change)
         
-        # Update progress
-        self.calculate_progress()
-    
+
     class Config:
         json_encoders = {
             datetime: lambda v: v.isoformat()

@@ -318,72 +318,72 @@ def get_database_info() -> dict:
     }
 
 
-class DatabaseManager:
-    """Database management utility class"""
+# class DatabaseManager:
+#     """Database management utility class"""
     
-    @staticmethod
-    def health_check() -> dict:
-        """Perform database health check"""
-        try:
-            with get_db_context() as db:
-                # Test basic connectivity
-                db.execute("SELECT 1")
+#     @staticmethod
+#     def health_check() -> dict:
+#         """Perform database health check"""
+#         try:
+#             with get_db_context() as db:
+#                 # Test basic connectivity
+#                 db.execute("SELECT 1")
                 
-                # Get table counts
-                contract_count = db.query(Contract).count()
-                amendment_count = db.query(Amendment).count()
-                event_count = db.query(WorkflowEvent).count()
+#                 # Get table counts
+#                 contract_count = db.query(Contract).count()
+#                 amendment_count = db.query(Amendment).count()
+#                 event_count = db.query(WorkflowEvent).count()
                 
-                return {
-                    "status": "healthy",
-                    "connection": "ok",
-                    "tables": {
-                        "contracts": contract_count,
-                        "amendments": amendment_count,
-                        "events": event_count
-                    },
-                    "info": get_database_info()
-                }
-        except Exception as e:
-            return {
-                "status": "unhealthy",
-                "connection": "failed",
-                "error": str(e),
-                "info": get_database_info()
-            }
+#                 return {
+#                     "status": "healthy",
+#                     "connection": "ok",
+#                     "tables": {
+#                         "contracts": contract_count,
+#                         "amendments": amendment_count,
+#                         "events": event_count
+#                     },
+#                     "info": get_database_info()
+#                 }
+#         except Exception as e:
+#             return {
+#                 "status": "unhealthy",
+#                 "connection": "failed",
+#                 "error": str(e),
+#                 "info": get_database_info()
+#             }
     
-    @staticmethod
-    def cleanup_old_data(days_old: int = 90):
-        """Clean up old data (use with caution)"""
-        print(f"🧹 Cleaning up data older than {days_old} days...")
+#     @staticmethod
+#     def cleanup_old_data(days_old: int = 90):
+#         """Clean up old data (use with caution)"""
+#         print(f"🧹 Cleaning up data older than {days_old} days...")
         
-        from datetime import timedelta
-        cutoff_date = datetime.utcnow() - timedelta(days=days_old)
+#         from datetime import timedelta
+#         cutoff_date = datetime.utcnow() - timedelta(days=days_old)
         
-        with get_db_context() as db:
-            # Clean up old workflow events
-            old_events = db.query(WorkflowEvent).filter(
-                WorkflowEvent.timestamp < cutoff_date
-            ).count()
+#         with get_db_context() as db:
+#             # Clean up old workflow events
+#             old_events = db.query(WorkflowEvent).filter(
+#                 WorkflowEvent.timestamp < cutoff_date
+#             ).count()
             
-            if old_events > 0:
-                db.query(WorkflowEvent).filter(
-                    WorkflowEvent.timestamp < cutoff_date
-                ).delete()
-                print(f"   Deleted {old_events} old workflow events")
+#             if old_events > 0:
+#                 db.query(WorkflowEvent).filter(
+#                     WorkflowEvent.timestamp < cutoff_date
+#                 ).delete()
+#                 print(f"   Deleted {old_events} old workflow events")
             
-            # Clean up old notifications
-            old_notifications = db.query(NotificationLog).filter(
-                NotificationLog.created_at < cutoff_date
-            ).count()
+#             # Clean up old notifications
+#             old_notifications = db.query(NotificationLog).filter(
+#                 NotificationLog.created_at < cutoff_date
+#             ).count()
             
-            if old_notifications > 0:
-                db.query(NotificationLog).filter(
-                    NotificationLog.created_at < cutoff_date
-                ).delete()
-                print(f"   Deleted {old_notifications} old notifications")
+#             if old_notifications > 0:
+#                 db.query(NotificationLog).filter(
+#                     NotificationLog.created_at < cutoff_date
+#                 ).delete()
+#                 print(f"   Deleted {old_notifications} old notifications")
             
-            print("   ✅ Cleanup completed")
+#             print("   ✅ Cleanup completed")
 
 
 # Initialize database on import if not testing
@@ -405,6 +405,5 @@ __all__ = [
     'Base',
     'create_tables',
     'init_database',
-    'DatabaseManager',
     'check_database_connection'
 ]

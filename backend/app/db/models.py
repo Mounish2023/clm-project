@@ -12,6 +12,7 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import UUID
 from datetime import datetime
 import uuid
+from sqlalchemy import Index
 
 Base = declarative_base()
 
@@ -68,9 +69,7 @@ class Amendment(Base):
     
     # Workflow state
     status = Column(String(50), default="initiated")
-    current_step = Column(String(100), nullable=True)
-    progress_percentage = Column(Float, default=0.0)
-    
+
     # Party responses and approvals
     approvals = Column(JSON, nullable=True)  # Party ID -> response data
     conflicts = Column(JSON, nullable=True)  # List of conflict information
@@ -80,24 +79,18 @@ class Amendment(Base):
     compliance_checks = Column(JSON, nullable=True)
     risk_assessment = Column(JSON, nullable=True)
     
-    # Workflow metrics
-    estimated_completion = Column(DateTime, nullable=True)
-    actual_completion = Column(DateTime, nullable=True)
-    duration_minutes = Column(Integer, nullable=True)
-    
+
     # Final outputs
     final_document = Column(Text, nullable=True)
     final_document_hash = Column(String(64), nullable=True)
     
     # Audit and history
-    execution_history = Column(JSON, nullable=True)  # Node execution log
     error_log = Column(JSON, nullable=True)
     retry_count = Column(Integer, default=0)
     
     # Metadata
     workflow_config = Column(JSON, nullable=True)
-    priority = Column(String(20), default="normal")  # low, normal, high, urgent
-    
+ 
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -301,8 +294,7 @@ class SystemMetrics(Base):
         return f"<SystemMetrics(name='{self.metric_name}', value='{self.value}')>"
 
 
-# Indexes for performance
-from sqlalchemy import Index
+
 
 # Contract indexes
 Index('idx_contracts_status', Contract.status)
@@ -313,7 +305,6 @@ Index('idx_contracts_created_at', Contract.created_at)
 Index('idx_amendments_contract_id', Amendment.contract_id)
 Index('idx_amendments_status', Amendment.status)
 Index('idx_amendments_created_at', Amendment.created_at)
-Index('idx_amendments_progress', Amendment.progress_percentage)
 
 # Event indexes
 Index('idx_workflow_events_amendment_id', WorkflowEvent.amendment_id)

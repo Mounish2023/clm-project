@@ -11,7 +11,7 @@ from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
 from langchain_openai import ChatOpenAI
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from .graph_state import AmendmentWorkflowState, AmendmentStatus
 from .nodes.party_node import PartyAgentNode
@@ -38,11 +38,11 @@ class ContractAmendmentOrchestrator:
         workflow = StateGraph(AmendmentWorkflowState)
         
         # Add nodes
-        workflow.add_node("coordinator", self._coordinator_node)
+        workflow.add_node("initiator", self._initiator_node)
         workflow.add_node("party_notified", self._party_notified_node)
         workflow.add_node("party_review", self._party_review_node)
         workflow.add_node("conflict_resolution", self._conflict_resolution_node)
-        workflow.add_node("consensus_building", self._consensus_building_node)
+        # workflow.add_node("consensus_building", self._consensus_building_node)
         workflow.add_node("legal_review", self._legal_review_node)
         workflow.add_node("version_control", self._version_control_node)
         workflow.add_node("final_approval", self._final_approval_node)
@@ -50,104 +50,25 @@ class ContractAmendmentOrchestrator:
         workflow.add_node("error_handler", self._error_handler_node)
 
         # Set entry point
-        workflow.set_entry_point("coordinator")
+        workflow.set_entry_point("initiator")
         
-        # Add edges from coordinator
-        workflow.add_edge("coordinator", "party_notified")
+        # Add edges from initiator
+        workflow.add_edge("initiator", "party_notified")
         workflow.add_edge("party_notified", "party_review")
         workflow.add_edge("party_review", "conflict_resolution")
-        workflow.add_edge("conflict_resolution", "consensus_building")
-        workflow.add_edge("consensus_building", "legal_review")
+        # workflow.add_edge("conflict_resolution", "consensus_building")
+        workflow.add_edge("conflict_resolution", "legal_review")
         workflow.add_edge("legal_review", "version_control")
         workflow.add_edge("version_control", "final_approval")
         workflow.add_edge("final_approval", "completion")
         workflow.add_edge("completion", END)
         workflow.add_edge("error_handler", END)
         
-        # Add conditional edges from coordinator
-        workflow.add_conditional_edges(
-            "coordinator",
-            self._route_from_coordinator,
-            {
-                "party_notified": "party_notified",
-                "party_review": "party_review",
-                "conflict_resolution": "conflict_resolution", 
-                "legal_review": "legal_review",
-                "version_control": "version_control",
-                "final_approval": "final_approval",
-                "completion": "completion",
-                "error": "error_handler"
-            }
-        )
-
-        # Add conditional edges from party notified
-        workflow.add_conditional_edges(
-            "party_notified",
-            self._route_from_party_notified,
-            {
-                "party_review": "party_review",
-                "error": "error_handler"
-            }
-        )
-        
-        # Add conditional edges from party review
-        workflow.add_conditional_edges(
-            "party_review",
-            self._route_from_party_review,
-            {
-                "coordinator": "coordinator",
-                "conflict_resolution": "conflict_resolution",
-                "version_control": "version_control",
-                "error": "error_handler"
-            }
-        )
-        
-        # Add conditional edges from conflict resolution
-        workflow.add_conditional_edges(
-            "conflict_resolution",
-            self._route_from_conflict_resolution,
-            {
-                "consensus_building": "consensus_building",
-                "coordinator": "coordinator",
-                "error": "error_handler"
-            }
-        )
-
-        # Add edge from consensus building back to party review
-        workflow.add_edge("consensus_building", "party_review")
-        
-        # Add conditional edges from legal review
-        workflow.add_conditional_edges(
-            "legal_review",
-            self._route_from_legal_review, 
-            {
-                "version_control": "version_control",
-                "conflict_resolution": "conflict_resolution",
-                "coordinator": "coordinator",
-                "error": "error_handler"
-            }
-        )
-        
-        # Add conditional edges from version control
-        workflow.add_conditional_edges(
-            "version_control",
-            self._route_from_version_control,
-            {
-                "final_approval": "final_approval",
-                "coordinator": "coordinator",
-                "error": "error_handler"
-            }
-        )
-        
-        # Simple edges to completion or error handling
-        workflow.add_edge("final_approval", "completion")
-        workflow.add_edge("error_handler", END)
-        workflow.add_edge("completion", END)
-
         # Compile the workflow
         self.workflow = workflow.compile(checkpointer=self.memory)
     
     async def initiate_amendment(self, 
+                               workflow_id: str,
                                contract_id: str,
                                parties: List[Dict[str, Any]],
                                proposed_changes: Dict[str, Any],
@@ -177,6 +98,7 @@ class ContractAmendmentOrchestrator:
         
         # Create initial state
         initial_state = AmendmentWorkflowState(
+            workflow_id=workflow_id,
             contract_id=contract_id,
             parties=[p["id"] for p in parties],
             proposed_changes=proposed_changes,
@@ -209,7 +131,7 @@ class ContractAmendmentOrchestrator:
             print(f"   ❌ Workflow error: {str(e)}")
             raise
         
-        return initial_state.workflow_id
+        
     
     async def get_workflow_status(self, workflow_id: str) -> Dict[str, Any]:
         """Get current status of a workflow"""
@@ -225,7 +147,6 @@ class ContractAmendmentOrchestrator:
                 return {
                     "workflow_id": workflow_id,
                     "status": current_state.status,
-                    "progress": current_state.calculate_progress(),
                     "parties_status": {
                         party_id: response.status 
                         for party_id, response in current_state.party_responses.items()
@@ -233,7 +154,7 @@ class ContractAmendmentOrchestrator:
                     "conflicts": len(current_state.active_conflicts),
                     "created_at": current_state.created_at.isoformat(),
                     "updated_at": current_state.updated_at.isoformat(),
-                    "estimated_completion": current_state.metrics.estimated_completion.isoformat() if current_state.metrics.estimated_completion else None
+                    # "estimated_completion": current_state.metrics.estimated_completion.isoformat() if current_state.metrics.estimated_completion else None
                 }
         except Exception as e:
             return {"error": str(e), "workflow_id": workflow_id}
@@ -273,11 +194,11 @@ class ContractAmendmentOrchestrator:
     # Node implementations
     async def _party_notified_node(self, state: AmendmentWorkflowState) -> AmendmentWorkflowState:
         """Party notified node implementation"""
+        state.current_step = "party_notified"
         state.update_status(AmendmentStatus.UNDER_REVIEW, notes = "Party Agents have to review the Amendment Changes")
         return state
 
-    async def _coordinator_node(self, state: AmendmentWorkflowState) -> AmendmentWorkflowState:
-        """Coordinator node implementation"""
+    async def _initiator_node(self, state: AmendmentWorkflowState) -> AmendmentWorkflowState:
 
         """Handle workflow initiation"""
         print("📋 Handling workflow initiation...")
@@ -294,12 +215,6 @@ class ContractAmendmentOrchestrator:
             analysis_result = await self._analyze_contract_context(state)
             state.node_outputs["contract_analysis"] = analysis_result
         
-        # Estimate workflow complexity and timeline
-        complexity_score = await self._assess_workflow_complexity(state)
-        estimated_duration = self._calculate_estimated_duration(complexity_score, len(state.parties))
-        
-        state.metrics.estimated_completion = datetime.utcnow() + timedelta(minutes=estimated_duration)  # noqa: F821
-        
         # Set up party notification requirements
         state.required_approvals = state.parties.copy()
         
@@ -308,13 +223,13 @@ class ContractAmendmentOrchestrator:
         
         return state
 
-    def _calculate_estimated_duration(self, complexity: float, party_count: int) -> int:
-        """Calculate estimated duration in minutes"""
-        base_duration = 120  # 2 hours base
-        complexity_factor = complexity * 480  # Up to 8 hours for max complexity
-        party_factor = (party_count - 2) * 60  # 1 hour per additional party beyond 2
+    # def _calculate_estimated_duration(self, complexity: float, party_count: int) -> int:
+    #     """Calculate estimated duration in minutes"""
+    #     base_duration = 120  # 2 hours base
+    #     complexity_factor = complexity * 480  # Up to 8 hours for max complexity
+    #     party_factor = (party_count - 2) * 60  # 1 hour per additional party beyond 2
         
-        return int(base_duration + complexity_factor + party_factor)
+    #     return int(base_duration + complexity_factor + party_factor)
     
     async def _analyze_contract_context(self, state: AmendmentWorkflowState) -> Dict[str, Any]:
         """Analyze the original contract to understand context"""
@@ -355,51 +270,47 @@ class ContractAmendmentOrchestrator:
         except json.JSONDecodeError:
             return {"raw_analysis": response.content}
     
-    async def _assess_workflow_complexity(self, state: AmendmentWorkflowState) -> float:
-        """Assess the complexity of the amendment workflow"""
-        complexity_factors = {
-            "party_count": len(state.parties) * 0.2,
-            "change_count": len(state.proposed_changes) * 0.15,
-            "contract_length": len(state.original_contract or "") / 10000 * 0.1,
-            "regulatory_complexity": 0.3 if state.workflow_config.get("require_legal_review") else 0.1
-        }
+    # async def _assess_workflow_complexity(self, state: AmendmentWorkflowState) -> float:
+    #     """Assess the complexity of the amendment workflow"""
+    #     complexity_factors = {
+    #         "party_count": len(state.parties) * 0.2,
+    #         "change_count": len(state.proposed_changes) * 0.15,
+    #         "contract_length": len(state.original_contract or "") / 10000 * 0.1,
+    #         "regulatory_complexity": 0.3 if state.workflow_config.get("require_legal_review") else 0.1
+    #     }
         
-        base_complexity = sum(complexity_factors.values())
+    #     base_complexity = sum(complexity_factors.values())
         
-        # Analyze proposed changes for complexity
-        if state.proposed_changes:
-            complexity_prompt = f"""
-            Rate the complexity of these contract amendments on a scale of 1-10:
-            {json.dumps(state.proposed_changes, indent=2)}
+    #     # Analyze proposed changes for complexity
+    #     if state.proposed_changes:
+    #         complexity_prompt = f"""
+    #         Rate the complexity of these contract amendments on a scale of 1-10:
+    #         {json.dumps(state.proposed_changes, indent=2)}
             
-            Consider:
-            - Legal complexity
-            - Business impact
-            - Implementation difficulty
-            - Risk level
+    #         Consider:
+    #         - Legal complexity
+    #         - Business impact
+    #         - Implementation difficulty
+    #         - Risk level
             
-            Return only a number from 1-10.
-            """
+    #         Return only a number from 1-10.
+    #         """
             
-            messages = [
-                SystemMessage(content="You are an expert contract analyst."),
-                HumanMessage(content=complexity_prompt)
-            ]
+    #         messages = [
+    #             SystemMessage(content="You are an expert contract analyst."),
+    #             HumanMessage(content=complexity_prompt)
+    #         ]
             
-            try:
-                response = await self.llm.ainvoke(messages)
-                llm_complexity = float(response.content.strip()) / 10
-                base_complexity += llm_complexity * 0.3
-            except Exception as e:
-                print(f"Error analyzing complexity: {e}")
-                base_complexity += 0.5  # Default moderate complexity
+    #         try:
+    #             response = await self.llm.ainvoke(messages)
+    #             llm_complexity = float(response.content.strip()) / 10
+    #             base_complexity += llm_complexity * 0.3
+    #         except Exception as e:
+    #             print(f"Error analyzing complexity: {e}")
+    #             base_complexity += 0.5  # Default moderate complexity
         
-        return min(base_complexity, 1.0)  # Cap at 1.0
-    # async def _wait_node(self, state: AmendmentWorkflowState) -> AmendmentWorkflowState:
-    #     pending = state.get_pending_parties() if hasattr(state, "get_pending_parties") else []
-    #     print(f"⏸️ WAIT: Pending party responses: {pending if pending else 'unknown'}")
-    #     # Do not change status; just return to halt execution (END edge will stop the graph run)
-    #     return state
+    #     return min(base_complexity, 1.0)  # Cap at 1.0
+
         
     async def _party_review_node(self, state: AmendmentWorkflowState) -> AmendmentWorkflowState:
         """Party review node - coordinates all party agents"""
@@ -407,7 +318,7 @@ class ContractAmendmentOrchestrator:
         print(f"👥 PARTY REVIEW (Round {state.review_rounds}): Processing {len(state.parties)} parties")
 
         # Check if the number of review rounds has exceeded the maximum
-        max_rounds = state.workflow_config.get("max_review_rounds", 5)
+        max_rounds = state.workflow_config.get("max_review_rounds", 2)
         if state.review_rounds > max_rounds:
             print(f"   ❌ ERROR: Maximum review rounds ({max_rounds}) exceeded.")
             state.errors.append({"node": "party_review", "error": "Maximum review rounds exceeded."})
@@ -435,14 +346,14 @@ class ContractAmendmentOrchestrator:
                 else:
                     print(f"   ✅ Party {result.get('organization', 'Unknown')}: {result.get('decision', 'No decision')}")
         
-        # Update status based on responses
-        if len(state.party_responses) == len(state.parties):
-            if state.has_active_conflicts():
-                state.update_status(AmendmentStatus.CONFLICTS_DETECTED)
-            elif state.is_consensus_reached():
-                state.update_status(AmendmentStatus.CONSENSUS_BUILDING)
-            else:
-                state.update_status(AmendmentStatus.UNDER_REVIEW)
+        # # Update status based on responses
+        # if len(state.party_responses) == len(state.parties):
+        #     if state.has_active_conflicts():
+        #         state.update_status(AmendmentStatus.CONFLICTS_DETECTED)
+        #     elif state.is_consensus_reached():
+        #         state.update_status(AmendmentStatus.CONSENSUS_BUILDING)
+        #     else:
+        #         state.update_status(AmendmentStatus.UNDER_REVIEW)
         
         return state
     
@@ -464,35 +375,35 @@ class ContractAmendmentOrchestrator:
         
         return state
 
-    async def _consensus_building_node(self, state: AmendmentWorkflowState) -> AmendmentWorkflowState:
-        """Applies the AI-mediated proposal and sends it back for review."""
-        print("🤝 CONSENSUS BUILDING: Applying AI-mediated changes and preparing for re-review.")
+    # async def _consensus_building_node(self, state: AmendmentWorkflowState) -> AmendmentWorkflowState:
+    #     """Applies the AI-mediated proposal and sends it back for review."""
+    #     print("🤝 CONSENSUS BUILDING: Applying AI-mediated changes and preparing for re-review.")
 
-        new_changes = state.node_outputs.get("consensus_proposal")
+    #     new_changes = state.node_outputs.get("consensus_proposal")
 
-        if new_changes:
-            # Update the main proposed changes with the mediator's solution
-            state.proposed_changes = new_changes
+    #     if new_changes:
+    #         # Update the main proposed changes with the mediator's solution
+    #         state.proposed_changes = new_changes
 
-            # Reset party responses to 'pending' to trigger a new review round
-            for party_id in state.parties:
-                if party_id in state.party_responses:
-                    state.party_responses[party_id].status = "pending"
+    #         # Reset party responses to 'pending' to trigger a new review round
+    #         for party_id in state.parties:
+    #             if party_id in state.party_responses:
+    #                 state.party_responses[party_id].status = "pending"
             
-            # Clear approvals and conflicts as we are starting a new review round
-            state.received_approvals = []
-            state.active_conflicts = []
-            state.conflicts = [] # Optionally clear old conflicts
+    #         # Clear approvals and conflicts as we are starting a new review round
+    #         state.received_approvals = []
+    #         state.active_conflicts = []
+    #         state.conflicts = [] # Optionally clear old conflicts
 
-            # Set status to trigger re-review
-            state.update_status(AmendmentStatus.UNDER_REVIEW, notes="Re-evaluating proposal after AI-mediated resolution.")
-            print("   New proposal sent to parties for re-evaluation.")
-        else:
-            print("   Skipping consensus building as no new proposal was generated.")
-            # If no new changes, we might need an alternative path, like manual intervention
-            state.errors.append({"node": "consensus_building", "error": "No consensus proposal found to apply."})
+    #         # Set status to trigger re-review
+    #         state.update_status(AmendmentStatus.UNDER_REVIEW, notes="Re-evaluating proposal after AI-mediated resolution.")
+    #         print("   New proposal sent to parties for re-evaluation.")
+    #     else:
+    #         print("   Skipping consensus building as no new proposal was generated.")
+    #         # If no new changes, we might need an alternative path, like manual intervention
+    #         state.errors.append({"node": "consensus_building", "error": "No consensus proposal found to apply."})
 
-        return state
+    #     return state
     
     async def _legal_review_node(self, state: AmendmentWorkflowState) -> AmendmentWorkflowState:
         """Legal compliance review node"""
@@ -575,7 +486,7 @@ class ContractAmendmentOrchestrator:
             state.final_document):
             
             state.update_status(AmendmentStatus.APPROVED)
-            state.completed_at = datetime.utcnow()
+            state.completed_at = datetime.now(timezone.utc)
         else:
             # Return to coordinator for further processing
             state.update_status(AmendmentStatus.UNDER_REVIEW)
@@ -587,13 +498,7 @@ class ContractAmendmentOrchestrator:
         print(f"🎉 COMPLETION: Amendment workflow {state.workflow_id} completed successfully")
         
         state.update_status(AmendmentStatus.COMPLETED)
-        state.completed_at = datetime.utcnow()
-        
-        # Calculate final metrics
-        state.metrics.current_duration = (
-            state.completed_at - state.metrics.start_time
-        ).total_seconds()
-        state.metrics.progress_percentage = 100.0
+        state.completed_at = datetime.now(timezone.utc)
         
         return state
     
@@ -607,98 +512,19 @@ class ContractAmendmentOrchestrator:
         error_summary = {
             "error_count": len(state.errors),
             "latest_errors": state.errors[-3:] if state.errors else [],
-            "failed_at": datetime.utcnow().isoformat()
+            "failed_at": datetime.now(timezone.utc).isoformat()
         }
         
         state.node_outputs["error_summary"] = error_summary
         
         return state
     
-    # Routing conditions
-    # def _route_from_coordinator(self, state: AmendmentWorkflowState) -> str:
-    #     """Route from coordinator based on state"""
-
-    #     if state.status == AmendmentStatus.PARTIES_NOTIFIED:
-    #         return "party_notified"
-    #     elif state.status == AmendmentStatus.UNDER_REVIEW:
-    #         return "party_review"
-    #     elif state.status == AmendmentStatus.CONFLICTS_DETECTED:
-    #         return "conflict_resolution"
-    #     elif state.status == AmendmentStatus.LEGAL_REVIEW:
-    #         return "legal_review"
-    #     elif state.status == AmendmentStatus.CONSENSUS_BUILDING:
-    #         return "version_control"
-    #     elif state.status == AmendmentStatus.FINAL_APPROVAL:
-    #         return "final_approval"
-    #     elif state.status in [AmendmentStatus.APPROVED, AmendmentStatus.COMPLETED]:
-    #         return "completion"
-    #     elif state.errors:
-    #         return "error"
-    #     else:
-    #         return "party_review"
-
-    # def _route_from_party_notified(self, state: AmendmentWorkflowState) -> str:
-    #     """Route from party notified based on responses"""
-    #     if state.status == AmendmentStatus.UNDER_REVIEW:
-    #         return "party_review"
-    #     elif state.errors:
-    #         return "error"
-    #     else:
-    #         return "coordinator"
-
-    # def _route_from_party_review(self, state: AmendmentWorkflowState) -> str:
-    #     """Route from party review based on responses"""
-    #     pending_parties = state.get_pending_parties()
-
-    #     if state.has_active_conflicts():
-    #         return "conflict_resolution"
-    #     elif state.is_consensus_reached():
-    #         return "version_control"
-    #     elif pending_parties:
-    #         return END
-    #     elif state.errors:
-    #         return "error"
-    #     else:
-    #         return "coordinator"
-
-    # def _route_from_conflict_resolution(self, state: AmendmentWorkflowState) -> str:
-    #     """Route from conflict resolution"""
-    #     if state.errors:
-    #         return "error"
-    #     if state.status == AmendmentStatus.CONSENSUS_BUILDING:
-    #         return "consensus_building"
-    #     else:
-    #         # This case should ideally not be hit if the node works correctly
-    #         return "coordinator"
-    
-    # def _route_from_legal_review(self, state: AmendmentWorkflowState) -> str:
-    #     """Route from legal review"""
-        
-    #     if state.legal_review_status == "approved":
-    #         return "version_control"
-    #     elif state.legal_review_status == "requires_changes":
-    #         return "conflict_resolution"
-    #     elif state.errors:
-    #         return "error"
-    #     else:
-    #         return "coordinator"
-    
-    # def _route_from_version_control(self, state: AmendmentWorkflowState) -> str:
-    #     """Route from version control"""
-        
-    #     if state.final_document and state.is_consensus_reached():
-    #         return "final_approval"
-    #     elif state.errors:
-    #         return "error"
-    #     else:
-    #         return "coordinator"
-
-
 # Global orchestrator instance
 orchestrator = ContractAmendmentOrchestrator()
 
 
 async def initiate_contract_amendment(
+    workflow_id: str,
     contract_id: str,
     parties: List[Dict[str, Any]], 
     proposed_changes: Dict[str, Any],
@@ -708,6 +534,7 @@ async def initiate_contract_amendment(
     """Convenience function to initiate contract amendment"""
     
     return await orchestrator.initiate_amendment(
+        workflow_id=workflow_id,
         contract_id=contract_id,
         parties=parties,
         proposed_changes=proposed_changes,
