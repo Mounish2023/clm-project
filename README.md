@@ -44,8 +44,15 @@ This project aims to solve these issues by creating an automated system that orc
 
 ## Core Entities and APIs
 
-### Core Entities
+### Core Entities (from SQLAlchemy models)
+- **Contract**: Stores title, content, parties, status, and versions.
+- **Amendment**: Tracks workflow ID, proposed changes, party responses, conflicts, and final document.
+- **Party**: Organization details, policies (e.g., risk_tolerance), and contacts.
+- **WorkflowEvent**: Audit logs for node executions, errors, and status changes.
+- **ContractVersion**: Versioned documents with hashes and diffs.
+- **NotificationLog**: Logs for emails/WebSockets.
 
+### Main Components
 - **Orchestrator**: The central component, built with LangGraph, that defines and manages the state machine for the amendment workflow.
 - **Party Agent Node**: An AI agent representing a single party. It encapsulates the party's policies and uses an LLM to perform detailed analysis (contractual, business, legal, risk) and make decisions.
 - **Conflict Resolver Node**: An agent responsible for mediating disagreements between parties by proposing neutral and mutually beneficial solutions.
