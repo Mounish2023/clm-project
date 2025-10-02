@@ -20,15 +20,16 @@ from backend.app.core.orchestrator import (
     initiate_contract_amendment, 
     get_amendment_status
 )
-from backend.app.core.graph_state import AmendmentStatus
+# Removed unused import AmendmentStatus
 from backend.app.services.notification_service import NotificationService
-from backend.app.db.models import Contract, Amendment
-from backend.app.db.databases import get_db, init_database
+from backend.app.db.models import Contract, Amendment, ContractVersion
+from backend.app.db.databases import get_db, init_database, drop_tables
 from sqlalchemy.orm import Session
 from uuid import uuid4
 
 from scalar_fastapi import get_scalar_api_reference
 import os
+import logging
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -42,6 +43,8 @@ def lifespan_handler(app: FastAPI):
     os.environ["LANGSMITH_PROJECT_NAME"] = os.getenv("LANGSMITH_PROJECT_NAME", "")
 
     yield
+    drop_tables()
+
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -56,7 +59,7 @@ app = FastAPI(
 # CORS configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:3001"],
+    allow_origins=["http://localhost:3000", "http://localhost:3001", "http://localhost:5175"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"]
@@ -144,8 +147,9 @@ class ConnectionManager:
             for connection in self.active_connections[workflow_id]:
                 try:
                     await connection.send_text(json.dumps(message))
-                except:
+                except (RuntimeError, WebSocketDisconnect) as e:
                     # Remove broken connections
+                    logging.warning(f"WebSocket connection error: {e}")
                     self.active_connections[workflow_id].remove(connection)
 
 
@@ -295,6 +299,84 @@ async def resume_workflow(
         raise HTTPException(status_code=500, detail=f"Failed to resume workflow: {str(e)}")
 
 
+class ContractVersionResponse(BaseModel):
+    version_number: int
+    created_at: datetime
+    changes_summary: Optional[str]
+
+    class Config:
+        from_attributes = True
+
+class ContractResponse(BaseModel):
+    id: str
+    title: str
+    content: Optional[str]
+    status: str
+    created_at: datetime
+    updated_at: datetime
+    parties: List[dict] = []
+    latest_version: Optional[ContractVersionResponse] = None
+
+    class Config:
+        from_attributes = True
+
+
+@app.get("/api/v1/contracts", response_model=List[ContractResponse])
+async def list_contracts(
+    status: Optional[str] = None,
+    limit: int = 50,
+    offset: int = 0,
+    db: Session = Depends(get_db),
+):
+    try:
+        query = db.query(Contract)
+
+        if status:
+            query = query.filter(Contract.status == status)
+
+        contracts = (
+            query.order_by(Contract.created_at.desc())
+            .offset(offset)
+            .limit(limit)
+            .all()
+        )
+
+        results: List[ContractResponse] = []
+        for contract in contracts:
+            latest_version = (
+                db.query(ContractVersion)
+                .filter(ContractVersion.contract_id == contract.id)
+                .order_by(ContractVersion.version_number.desc())
+                .first()
+            )
+
+            results.append(
+                ContractResponse(
+                    id=contract.id,
+                    title=contract.title,
+                    content=contract.content,
+                    status=contract.status,
+                    created_at=contract.created_at,
+                    updated_at=contract.updated_at,
+                    parties=contract.parties or [],
+                    latest_version=(
+                        ContractVersionResponse(
+                            version_number=latest_version.version_number,
+                            created_at=latest_version.created_at,
+                            changes_summary=latest_version.changes_summary,
+                        )
+                        if latest_version
+                        else None
+                    ),
+                )
+            )
+
+        return results
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to list contracts: {str(e)}")
+
+
 @app.get("/api/v1/amendments")
 async def list_amendments(
     status: Optional[str] = None,
@@ -311,7 +393,8 @@ async def list_amendments(
         if status:
             query = query.filter(Amendment.status == status)
         
-        amendments = query.offset(offset).limit(limit).all()
+        amendments = query.order_by(Amendment.created_at.desc())
+        amendments = amendments.offset(offset).limit(limit).all()
         
         return {
             "amendments": [

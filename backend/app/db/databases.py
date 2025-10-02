@@ -8,6 +8,7 @@ initialization utilities for the Contract Amendment Orchestrator.
 
 import os
 from typing import Generator
+from rich import text
 from sqlalchemy import create_engine, event
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
@@ -16,7 +17,8 @@ from contextlib import contextmanager
 import logging
 
 # Import models to ensure they're registered
-from .models import Base, Contract, Amendment, WorkflowEvent, Party, NotificationLog
+from .models import Base, Contract, Amendment, Party, ContractVersion
+from datetime import datetime
 
 # Database configuration
 DATABASE_URL = os.getenv(
@@ -153,76 +155,50 @@ def init_database():
     if not IS_TESTING and os.getenv("ENVIRONMENT", "development") == "development":
         create_sample_data()
 
-
 def create_sample_data():
     """Create sample data for development"""
     print("📝 Creating sample data...")
     
     with get_db_context() as db:
-        # Check if sample data already exists
-        existing_contract = db.query(Contract).filter(
-            Contract.id == "SAMPLE_CONTRACT_001"
+        # Check if sample data already exists (check for first party)
+# Define sample IDs for deletion
+        party_ids = [
+            "techcorp_inc",
+            "devstudio_llc",
+            "cloudops_solutions",
+            "fintech_innovations_ltd",
+            "healthcare_systems_corp",
+            "ecogreen_energy_llc",
+            "autodrive_technologies_inc",
+            "foodchain_distributors",
+            "mediastream_entertainment",
+            "securenet_cybersecurity_llc"
+        ]
+         
+# Check if sample data already exists (check for first party)
+        existing_party = db.query(Party).filter(
+            Party.id == "techcorp_inc"
         ).first()
         
-        if existing_contract:
-            print("   Sample data already exists, skipping...")
-            return
+        if existing_party:
+            print("   Clearing existing sample data...")
+            
+            # Delete all versions (no filter, deletes everything in the table)
+            db.query(ContractVersion).delete(synchronize_session=False)
+            
+            # Delete all amendments
+            db.query(Amendment).delete(synchronize_session=False)
+            
+            # Delete all contracts
+            db.query(Contract).delete(synchronize_session=False)
+            
+            # Delete all parties
+            db.query(Party).delete(synchronize_session=False)
+            
+            db.commit()
+            print("   Existing data cleared.")
         
-        # Create sample contract
-        sample_contract = Contract(
-            id="SAMPLE_CONTRACT_001",
-            title="Master Service Agreement - Development Services",
-            content="""
-            MASTER SERVICE AGREEMENT
-            
-            This Master Service Agreement ("Agreement") is entered into between:
-            - TechCorp Inc. (Client)
-            - DevStudio LLC (Provider)
-            - CloudOps Solutions (Infrastructure Partner)
-            
-            1. SCOPE OF WORK
-            Provider will deliver custom software development services.
-            
-            2. FINANCIAL TERMS
-            Total Project Value: $500,000
-            Payment Schedule: Quarterly payments
-            Payment Terms: Net 30 days
-            
-            3. TIMELINE
-            Project Start: January 1, 2025
-            Estimated Completion: December 31, 2025
-            
-            4. INTELLECTUAL PROPERTY
-            All deliverables will be owned by Client upon payment.
-            """,
-            contract_type="master_service_agreement",
-            parties=[
-                {
-                    "id": "techcorp_inc",
-                    "name": "TechCorp Inc.",
-                    "role": "Client",
-                    "contact": "legal@techcorp.com"
-                },
-                {
-                    "id": "devstudio_llc", 
-                    "name": "DevStudio LLC",
-                    "role": "Provider",
-                    "contact": "contracts@devstudio.com"
-                },
-                {
-                    "id": "cloudops_solutions",
-                    "name": "CloudOps Solutions",
-                    "role": "Infrastructure Partner", 
-                    "contact": "partnerships@cloudops.com"
-                }
-            ],
-            total_value=500000.00,
-            status="active"
-        )
-        
-        db.add(sample_contract)
-        
-        # Create sample parties
+        # Create 10 sample parties with realistic data
         sample_parties = [
             Party(
                 id="techcorp_inc",
@@ -230,12 +206,20 @@ def create_sample_data():
                 organization_type="corporation",
                 primary_contact_name="Jane Smith",
                 primary_contact_email="legal@techcorp.com",
+                primary_contact_phone="+1-555-123-4567",
                 policies={
                     "risk_tolerance": "low",
                     "budget_limit": 600000,
                     "approval_threshold": 50000,
                     "required_clauses": ["ip_ownership", "termination_protection"]
-                }
+                },
+                preferences={
+                    "notification_method": "email",
+                    "frequency": "weekly"
+                },
+                status="active",
+                created_at=datetime(2024, 1, 1),
+                updated_at=datetime(2025, 10, 1)
             ),
             Party(
                 id="devstudio_llc",
@@ -243,64 +227,340 @@ def create_sample_data():
                 organization_type="llc",
                 primary_contact_name="John Developer",
                 primary_contact_email="contracts@devstudio.com",
+                primary_contact_phone="+1-555-234-5678",
                 policies={
                     "risk_tolerance": "medium",
                     "budget_limit": 750000,
                     "approval_threshold": 75000,
                     "preferred_terms": {"payment_terms": "Net 15 days"}
-                }
+                },
+                preferences={
+                    "notification_method": "slack",
+                    "frequency": "daily"
+                },
+                status="active",
+                created_at=datetime(2024, 2, 15),
+                updated_at=datetime(2025, 10, 1)
             ),
             Party(
                 id="cloudops_solutions",
                 organization_name="CloudOps Solutions",
                 organization_type="corporation",
                 primary_contact_name="Sarah Cloud",
-                primary_contact_email="partnerships@cloudops.com", 
+                primary_contact_email="partnerships@cloudops.com",
+                primary_contact_phone="+1-555-345-6789",
                 policies={
                     "risk_tolerance": "high",
                     "budget_limit": 200000,
                     "approval_threshold": 25000
-                }
+                },
+                preferences={
+                    "notification_method": "email",
+                    "frequency": "monthly"
+                },
+                status="active",
+                created_at=datetime(2024, 3, 10),
+                updated_at=datetime(2025, 10, 1)
+            ),
+            Party(
+                id="fintech_innovations_ltd",
+                organization_name="FinTech Innovations Ltd.",
+                organization_type="llc",
+                primary_contact_name="Mike Finance",
+                primary_contact_email="mike@fintechinn.com",
+                primary_contact_phone="+1-555-456-7890",
+                policies={
+                    "risk_tolerance": "medium",
+                    "budget_limit": 1000000,
+                    "approval_threshold": 100000,
+                    "required_clauses": ["data_privacy", "compliance"]
+                },
+                preferences={
+                    "notification_method": "email",
+                    "frequency": "weekly"
+                },
+                status="active",
+                created_at=datetime(2024, 4, 5),
+                updated_at=datetime(2025, 10, 1)
+            ),
+            Party(
+                id="healthcare_systems_corp",
+                organization_name="HealthCare Systems Corp.",
+                organization_type="corporation",
+                primary_contact_name="Dr. Emily Health",
+                primary_contact_email="emily@healthcaresys.com",
+                primary_contact_phone="+1-555-567-8901",
+                policies={
+                    "risk_tolerance": "low",
+                    "budget_limit": 500000,
+                    "approval_threshold": 40000,
+                    "required_clauses": ["hipaa_compliance", "liability"]
+                },
+                preferences={
+                    "notification_method": "phone",
+                    "frequency": "as_needed"
+                },
+                status="active",
+                created_at=datetime(2024, 5, 20),
+                updated_at=datetime(2025, 10, 1)
+            ),
+            Party(
+                id="ecogreen_energy_llc",
+                organization_name="EcoGreen Energy LLC",
+                organization_type="llc",
+                primary_contact_name="Tom Green",
+                primary_contact_email="tom@ecogreen.com",
+                primary_contact_phone="+1-555-678-9012",
+                policies={
+                    "risk_tolerance": "high",
+                    "budget_limit": 300000,
+                    "approval_threshold": 30000
+                },
+                preferences={
+                    "notification_method": "email",
+                    "frequency": "biweekly"
+                },
+                status="active",
+                created_at=datetime(2024, 6, 15),
+                updated_at=datetime(2025, 10, 1)
+            ),
+            Party(
+                id="autodrive_technologies_inc",
+                organization_name="AutoDrive Technologies Inc.",
+                organization_type="corporation",
+                primary_contact_name="Lisa Drive",
+                primary_contact_email="lisa@autodrive.com",
+                primary_contact_phone="+1-555-789-0123",
+                policies={
+                    "risk_tolerance": "medium",
+                    "budget_limit": 800000,
+                    "approval_threshold": 60000,
+                    "preferred_terms": {"warranty": "2 years"}
+                },
+                preferences={
+                    "notification_method": "slack",
+                    "frequency": "daily"
+                },
+                status="active",
+                created_at=datetime(2024, 7, 10),
+                updated_at=datetime(2025, 10, 1)
+            ),
+            Party(
+                id="foodchain_distributors",
+                organization_name="FoodChain Distributors",
+                organization_type="partnership",
+                primary_contact_name="Bob Food",
+                primary_contact_email="bob@foodchain.com",
+                primary_contact_phone="+1-555-890-1234",
+                policies={
+                    "risk_tolerance": "low",
+                    "budget_limit": 400000,
+                    "approval_threshold": 35000
+                },
+                preferences={
+                    "notification_method": "email",
+                    "frequency": "weekly"
+                },
+                status="active",
+                created_at=datetime(2024, 8, 5),
+                updated_at=datetime(2025, 10, 1)
+            ),
+            Party(
+                id="mediastream_entertainment",
+                organization_name="MediaStream Entertainment",
+                organization_type="corporation",
+                primary_contact_name="Alice Media",
+                primary_contact_email="alice@mediastream.com",
+                primary_contact_phone="+1-555-901-2345",
+                policies={
+                    "risk_tolerance": "high",
+                    "budget_limit": 900000,
+                    "approval_threshold": 70000,
+                    "required_clauses": ["content_ownership"]
+                },
+                preferences={
+                    "notification_method": "phone",
+                    "frequency": "monthly"
+                },
+                status="active",
+                created_at=datetime(2024, 9, 20),
+                updated_at=datetime(2025, 10, 1)
+            ),
+            Party(
+                id="securenet_cybersecurity_llc",
+                organization_name="SecureNet Cybersecurity LLC",
+                organization_type="llc",
+                primary_contact_name="David Secure",
+                primary_contact_email="david@securenet.com",
+                primary_contact_phone="+1-555-012-3456",
+                policies={
+                    "risk_tolerance": "medium",
+                    "budget_limit": 550000,
+                    "approval_threshold": 45000
+                },
+                preferences={
+                    "notification_method": "email",
+                    "frequency": "daily"
+                },
+                status="active",
+                created_at=datetime(2024, 10, 15),
+                updated_at=datetime(2025, 10, 1)
             )
         ]
         
         for party in sample_parties:
             db.add(party)
         
-        # Create sample amendment
-        sample_amendment = Amendment(
-            id="SAMPLE_AMENDMENT_001",
-            contract_id="SAMPLE_CONTRACT_001",
-            proposed_changes={
-                "budget_increase": {
-                    "section": "2. FINANCIAL TERMS",
-                    "old_value": "$500,000",
-                    "new_value": "$650,000",
-                    "justification": "Additional security requirements"
+        # Define party IDs for reuse
+        party_ids = [p.id for p in sample_parties]
+        
+        # Create 10 sample contracts, each with 2-3 parties
+        sample_contracts = []
+        for i in range(10):
+            # Cycle through parties
+            p1 = party_ids[i % 10]
+            p2 = party_ids[(i + 1) % 10]
+            p3 = party_ids[(i + 2) % 10] if i % 2 == 0 else None  # Some with 3 parties
+            parties_list = [
+                {
+                    "id": p1,
+                    "name": sample_parties[i % 10].organization_name,
+                    "role": "Client",
+                    "contact": sample_parties[i % 10].primary_contact_email
                 },
-                "timeline_extension": {
-                    "section": "3. TIMELINE",
-                    "old_value": "December 31, 2025",
-                    "new_value": "March 31, 2026",
-                    "justification": "Extended testing phase"
+                {
+                    "id": p2,
+                    "name": sample_parties[(i + 1) % 10].organization_name,
+                    "role": "Provider",
+                    "contact": sample_parties[(i + 1) % 10].primary_contact_email
                 }
-            },
-            parties_involved=["techcorp_inc", "devstudio_llc", "cloudops_solutions"],
-            status="completed",
-            progress_percentage=100.0
-        )
+            ]
+            if p3:
+                parties_list.append({
+                    "id": p3,
+                    "name": sample_parties[(i + 2) % 10].organization_name,
+                    "role": "Partner",
+                    "contact": sample_parties[(i + 2) % 10].primary_contact_email
+                })
+            
+            contract = Contract(
+                id=f"SAMPLE_CONTRACT_{i+1:03d}",
+                title=f"Agreement {i+1}: {sample_parties[i % 10].organization_name} Services",
+                content=f"""
+                MASTER SERVICE AGREEMENT {i+1}
+                
+                This Agreement is entered into between:
+                - {parties_list[0]['name']} ({parties_list[0]['role']})
+                - {parties_list[1]['name']} ({parties_list[1]['role']})
+                {f"- {parties_list[2]['name']} ({parties_list[2]['role']})" if p3 else ""}
+                
+                1. SCOPE OF WORK
+                Provider will deliver services as specified.
+                
+                2. FINANCIAL TERMS
+                Total Value: ${50000 * (i+1)}
+                Payment Schedule: Monthly
+                
+                3. TIMELINE
+                Start: {datetime(2025, 1, 1 + i).strftime('%B %d, %Y')}
+                End: {datetime(2025, 12, 31 - i).strftime('%B %d, %Y')}
+                
+                4. INTELLECTUAL PROPERTY
+                Ownership terms apply.
+                """,
+                content_hash=f"hash_contract_{i+1:03d}",
+                contract_type="service_agreement" if i % 2 == 0 else "supply_agreement",
+                parties=parties_list,
+                primary_contact=parties_list[0]['contact'],
+                status="active" if i % 3 == 0 else "draft" if i % 3 == 1 else "terminated",
+                version=1,
+                total_value=50000 * (i + 1),
+                currency="USD",
+                effective_date=datetime(2025, 1, 1 + i),
+                expiration_date=datetime(2025, 12, 31 - i),
+                created_at=datetime(2025, 1, 1 + i),
+                updated_at=datetime(2025, 10, 1)
+            )
+            db.add(contract)
+            sample_contracts.append(contract)
         
-        db.add(sample_amendment)
+        # Create 10 sample amendments, one per contract
+        sample_amendments = []
+        for i in range(10):
+            contract_id = sample_contracts[i].id
+            p1 = party_ids[i % 10]
+            p2 = party_ids[(i + 1) % 10]
+            p3 = party_ids[(i + 2) % 10] if i % 2 == 0 else None
+            involved = [p1, p2]
+            if p3:
+                involved.append(p3)
+            
+            amendment = Amendment(
+                id=f"SAMPLE_AMENDMENT_{i+1:03d}",
+                contract_id=contract_id,
+                proposed_changes={
+                    f"change_{i+1}_1": {
+                        "section": "2. FINANCIAL TERMS",
+                        "old_value": f"${50000 * (i+1)}",
+                        "new_value": f"${50000 * (i+1) + 10000}",
+                        "justification": "Increased scope"
+                    },
+                    f"change_{i+1}_2": {
+                        "section": "3. TIMELINE",
+                        "old_value": datetime(2025, 12, 31 - i).strftime('%B %d, %Y'),
+                        "new_value": datetime(2026, 3, 31 - i).strftime('%B %d, %Y'),
+                        "justification": "Additional requirements"
+                    }
+                },
+                parties_involved=involved,
+                status="completed" if i % 3 == 0 else "initiated" if i % 3 == 1 else "rejected",
+                approvals={p1: {"approved": True, "date": "2025-09-01"}, p2: {"approved": i % 2 == 0, "date": "2025-09-02"}},
+                conflicts=[{"issue": f"Disagreement on change {i+1}", "resolution": "pending" if i % 2 == 0 else "resolved"}],
+                legal_review_status="completed" if i % 2 == 0 else "pending",
+                compliance_checks={"gdpr": "passed", "sox": "passed" if i % 2 == 0 else "failed"},
+                risk_assessment={"level": "medium", "score": 5.0 + i * 0.5},
+                final_document=f"Amended content for contract {contract_id}.",
+                final_document_hash=f"hash_amend_{i+1:03d}",
+                error_log=[{"error": "Validation warning", "timestamp": "2025-08-01"}] if i % 3 == 0 else None,
+                retry_count=i % 4,
+                workflow_config={"steps": ["initiate", "review", "approve"]},
+                created_at=datetime(2025, 6, 1 + i),
+                updated_at=datetime(2025, 10, 1),
+                completed_at=datetime(2025, 9, 1 + i) if i % 3 == 0 else None
+            )
+            db.add(amendment)
+            sample_amendments.append(amendment)
         
+        # Create 10 sample contract versions, one per contract
+        for i in range(10):
+            contract_id = sample_contracts[i].id
+            amendment_id = sample_amendments[i].id if i % 2 == 0 else None
+            version = ContractVersion(
+                id=f"SAMPLE_VERSION_{i+1:03d}",
+                contract_id=contract_id,
+                amendment_id=amendment_id,
+                version_number=2 if amendment_id else 1,
+                content=f"Version content for contract {contract_id}, version {2 if amendment_id else 1}. Updated terms.",
+                content_hash=f"hash_version_{i+1:03d}",
+                changes_summary=f"Summary of changes for version {i+1}.",
+                diff_from_previous={"added": ["new section"], "removed": [], "modified": ["financial terms"]},
+                author="System Admin" if i % 2 == 0 else "Legal Team",
+                author_type="system" if i % 2 == 0 else "user",
+                tags=["approved"] if i % 3 == 0 else ["draft"],
+                contract_metadata={"notes": f"Metadata for version {i+1}"},
+                created_at=datetime(2025, 2, 1 + i) if not amendment_id else datetime(2025, 7, 1 + i)
+            )
+            db.add(version)
+        
+        db.commit()
         print("   ✅ Sample data created successfully")
-
 
 def check_database_connection() -> bool:
     """Check if database connection is working"""
     try:
         with get_db_context() as db:
             # Simple query to test connection
-            db.execute("SELECT 1")
+            db.execute(text("SELECT 1"))
             return True
     except Exception as e:
         print(f"❌ Database connection failed: {str(e)}")
