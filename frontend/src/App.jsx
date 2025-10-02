@@ -3,6 +3,8 @@ import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react
 import axios from 'axios';
 import CreateAmendmentForm from './components/CreateAmendmentForm';
 import ContractsList from './components/ContractsList';
+import ContractDetails from './components/ContractDetails';
+import AmendmentDetails from './components/AmendmentDetails';
 import './App.css';
 
 function AmendmentsList() {
@@ -167,7 +169,9 @@ function App() {
           <Routes>
             <Route path="/" element={<ContractsList />} />
             <Route path="/contracts" element={<ContractsList />} />
+            <Route path="/contracts/:id" element={<ContractDetails />} />
             <Route path="/amendments" element={<AmendmentsList />} />
+            <Route path="/amendments/:workflowId" element={<AmendmentDetails />} />
             <Route path="/amendments/new" element={
               <CreateAmendmentForm 
                 onSuccess={(data) => ({
